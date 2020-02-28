@@ -26,6 +26,15 @@ namespace System.CommandLine.Help
 
         public int MaxWidth { get; } 
 
+        public int HalfWidth
+        {
+            get
+            {
+                //return (int)(MaxWidth * 0.5);
+                return 15;
+            }
+        }
+
         /// <summary>
         /// Brokers the generation and output of help text of <see cref="Symbol"/>
         /// and the <see cref="IConsole"/>
@@ -101,6 +110,16 @@ namespace System.CommandLine.Help
         protected int GetAvailableWidth()
         {
             return MaxWidth - CurrentIndentation - WindowMargin;
+        }
+
+        /// <summary>
+        /// Gets the currently available space based on the <see cref="MaxWidth"/> from the window
+        /// and the current indentation level
+        /// </summary>
+        /// <returns>The number of characters available on the current line</returns>
+        protected int GetAvailableHalfWidth()
+        {
+            return HalfWidth - CurrentIndentation - WindowMargin;
         }
 
         /// <summary>
@@ -210,28 +229,67 @@ namespace System.CommandLine.Help
                 throw new ArgumentNullException(nameof(helpItem));
             }
 
-            AppendText(helpItem.Invocation, CurrentIndentation);
+            var availableHalfWidth = GetAvailableHalfWidth();
+
+            var invocationWidth = maxInvocationWidth < availableHalfWidth ? maxInvocationWidth : availableHalfWidth;
+
+            var invocationLines = SplitInvocation(helpItem.Invocation, invocationWidth);
+            var invocationLineCount = invocationLines.Count;
+
+            AppendText(invocationLines.FirstOrDefault(), CurrentIndentation);
+
+            //var maxInvocationWidth = availableHalfWidth;
+
+
+            //var descriptionLines = SplitText(helpItem.Invocation, maxDescriptionWidth);
+
+
+
+            //AppendText(helpItem.Invocation, CurrentIndentation);
 
             var offset = maxInvocationWidth + ColumnGutter - helpItem.Invocation.Length;
             var availableWidth = GetAvailableWidth();
             var maxDescriptionWidth = availableWidth - maxInvocationWidth - ColumnGutter;
 
             var descriptionLines = SplitText(helpItem.Description, maxDescriptionWidth);
-            var lineCount = descriptionLines.Count;
+            var descriptionLineCount = descriptionLines.Count;
 
             AppendLine(descriptionLines.FirstOrDefault(), offset);
 
-            if (lineCount == 1)
+            if (descriptionLineCount == 1 && invocationLineCount == 1)
             {
                 return;
             }
 
-            offset = CurrentIndentation + maxInvocationWidth + ColumnGutter;
+            var maxLineCount = descriptionLineCount > invocationLineCount ? descriptionLineCount : invocationLineCount;
 
-            foreach (var descriptionLine in descriptionLines.Skip(1))
+            for (int i = 1; i < maxLineCount; i++)
             {
-                AppendLine(descriptionLine, offset);
+                if (invocationLineCount > i)
+                {
+                    AppendText(invocationLines.ElementAt(i), CurrentIndentation);
+                    offset = CurrentIndentation + invocationWidth + ColumnGutter - invocationLines.ElementAt(i).Length;
+                }
+                else
+                {
+                    offset = CurrentIndentation + invocationWidth + ColumnGutter;
+                }
+
+                if (descriptionLineCount > i)
+                {
+                    AppendLine(descriptionLines.ElementAt(i), offset);
+                }
+                else
+                {
+                    Console.Out.WriteLine(string.Empty);
+                }
             }
+            
+
+            //foreach (var descriptionLine in descriptionLines.Skip(1))
+            //{
+            //    AppendLine(descriptionLine, offset);
+            //}
         }
 
         /// <summary>
@@ -272,6 +330,47 @@ namespace System.CommandLine.Help
                 if (builder.Length > 0)
                 {
                     builder.Append(" ");
+                }
+
+                builder.Append(item);
+            }
+
+            if (builder.Length > 0)
+            {
+                lines.Add(builder.ToString());
+            }
+
+            return lines;
+        }
+
+        protected virtual IReadOnlyCollection<string> SplitInvocation(string text, int maxLength)
+        {
+            //var cleanText = Regex.Replace(text, "[|]", " ");
+            var cleanText = text;
+            var textLength = cleanText.Length;
+
+            if (string.IsNullOrWhiteSpace(cleanText) || textLength < maxLength)
+            {
+                return new[] { cleanText };
+            }
+
+            var lines = new List<string>();
+            var builder = new StringBuilder();
+
+            foreach (var item in cleanText.Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var length = item.Length + builder.Length;
+
+                if (length >= maxLength && builder.Length > 0)
+                {
+                    builder.Append("|");
+                    lines.Add(builder.ToString());
+                    builder.Clear();
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.Append("|");
                 }
 
                 builder.Append(item);
